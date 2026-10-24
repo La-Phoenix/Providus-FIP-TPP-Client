@@ -15,7 +15,12 @@ import {
   DashboardSummary,
 } from '../types';
 
-const API_BASE = '/api';
+const envApiUrl = import.meta.env.VITE_API_BASE_URL;
+const API_BASE = envApiUrl
+  ? envApiUrl.endsWith('/api')
+    ? envApiUrl
+    : `${envApiUrl.replace(/\/$/, '')}/api`
+  : '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const correlationId = 'nexapay-' + Math.random().toString(36).substring(2, 10);
