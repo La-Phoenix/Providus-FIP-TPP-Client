@@ -95,10 +95,12 @@ export const api = {
   // Cards
   getCards: async (params?: { customerId?: string; maskedPan?: string; nameOnCard?: string }): Promise<Card[]> => {
     const q = new URLSearchParams();
-    if (params?.customerId) q.append('customerId', params.customerId);
-    if (params?.maskedPan) q.append('maskedPan', params.maskedPan);
-    if (params?.nameOnCard) q.append('nameOnCard', params.nameOnCard);
-    const result = await fetchJson<any>(`${API_BASE}/cards?${q.toString()}`);
+    if (params?.customerId?.trim()) q.append('CustomerId', params.customerId.trim());
+    if (params?.maskedPan?.trim()) q.append('MaskedPan', params.maskedPan.trim());
+    if (params?.nameOnCard?.trim()) q.append('NameOnCard', params.nameOnCard.trim());
+    const queryString = q.toString();
+    const url = queryString ? `${API_BASE}/cards?${queryString}` : `${API_BASE}/cards`;
+    const result = await fetchJson<any>(url);
     const rawList = Array.isArray(result) ? result : (result?.cards || []);
     return rawList.map((c: any) => ({
       id: c.localCardId || c.id || '',

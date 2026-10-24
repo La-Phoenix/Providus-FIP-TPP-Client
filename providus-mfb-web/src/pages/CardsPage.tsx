@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { Card } from '../types';
 import { CardVisualizer } from '../components/common/CardVisualizer';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { CreditCard, Lock, Unlock, Key, Wallet, AlertCircle, X, Search, UserCheck, PlusCircle } from 'lucide-react';
+import { CreditCard, Lock, Unlock, Key, Wallet, AlertCircle, X, Search, UserCheck, PlusCircle, Filter, RotateCcw, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const CardsPage: React.FC = () => {
@@ -17,15 +17,25 @@ export const CardsPage: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: cards, isLoading } = useQuery({
-    queryKey: ['cards'],
-    queryFn: () => api.getCards(),
+  // Providus FIP Card Filters (GET /api/v1/cards)
+  const [filterPan, setFilterPan] = useState('');
+  const [filterName, setFilterName] = useState('');
+  const [filterCustomerId, setFilterCustomerId] = useState('');
+  const [useCustomerSelect, setUseCustomerSelect] = useState(true);
+  const [appliedFilters, setAppliedFilters] = useState<{
+    customerId?: string;
+    maskedPan?: string;
+    nameOnCard?: string;
+  }>({});
+
+  const { data: cards, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['cards', appliedFilters],
+    queryFn: () => api.getCards(appliedFilters),
   });
 
   const { data: customerData } = useQuery({
-    queryKey: ['customersListForLinking'],
+    queryKey: ['customersListForDropdown'],
     queryFn: () => api.getCustomers({ page: 1, pageSize: 100 }),
-    enabled: activeModal === 'link',
   });
 
   const blockMutation = useMutation({
@@ -102,6 +112,26 @@ export const CardsPage: React.FC = () => {
     linkCardMutation.mutate({ customerId: selectedCustomerId, cardId: selectedCard.id });
   };
 
+  const handleApplyFilters = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const filters: { customerId?: string; maskedPan?: string; nameOnCard?: string } = {};
+    if (filterPan.trim()) filters.maskedPan = filterPan.trim();
+    if (filterName.trim()) filters.nameOnCard = filterName.trim();
+    if (filterCustomerId.trim()) filters.customerId = filterCustomerId.trim();
+    setAppliedFilters(filters);
+  };
+
+  const handleResetFilters = () => {
+    setFilterPan('');
+    setFilterName('');
+    setFilterCustomerId('');
+    setAppliedFilters({});
+  };
+
+  const hasActiveFilters = Boolean(
+    appliedFilters.maskedPan || appliedFilters.nameOnCard || appliedFilters.customerId
+  );
+
   const formatNaira = (kobo: number) => {
     return '₦' + (kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
   };
@@ -161,13 +191,213 @@ export const CardsPage: React.FC = () => {
         </div>
       )}
 
+      {/* Providus FIP Card Filters Section */}
+      <div className="neo-card p-5 space-y-4 border border-border bg-card/60 backdrop-blur-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-primary" />
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+              CardInfra / Providus FIP Filters
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-primary/10 text-primary border border-primary/20">
+              GET /api/v1/cards
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {isFetching && (
+              <span className="text-[11px] text-muted-foreground animate-pulse flex items-center gap-1.5">
+                <RefreshCw className="w-3 h-3 animate-spin text-primary" /> Syncing with FIP...
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              title="Refresh cards directly from Providus FIP"
+            >
+              <RefreshCw className="w-3 h-3" /> Refresh
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleApplyFilters} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Masked PAN Filter */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Masked PAN</span>
+              </label>
+              <input
+                type="text"
+                value={filterPan}
+                onChange={(e) => setFilterPan(e.target.value)}
+                placeholder="e.g. 506142xxxxxxxxx5671"
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground font-mono"
+              />
+            </div>
+
+            {/* Name On Card Filter */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Name on Card</span>
+              </label>
+              <input
+                type="text"
+                value={filterName}
+                onChange={(e) => setFilterName(e.target.value)}
+                placeholder="e.g. lp2139456 or Cardholder Name"
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
+              />
+            </div>
+
+            {/* Customer Filter */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>Customer ID</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseCustomerSelect(!useCustomerSelect);
+                    setFilterCustomerId('');
+                  }}
+                  className="text-[10px] text-primary hover:underline font-medium"
+                >
+                  {useCustomerSelect ? 'Type Custom ID' : 'Select Customer'}
+                </button>
+              </div>
+              {useCustomerSelect ? (
+                <select
+                  value={filterCustomerId}
+                  onChange={(e) => setFilterCustomerId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary truncate"
+                >
+                  <option value="">All Customers (No customer filter)</option>
+                  {customerData?.items.map((c) => (
+                    <option key={c.id} value={c.providusCustomerId || c.id}>
+                      {c.firstName} {c.lastName} ({c.providusCustomerId ? `FIP: ${c.providusCustomerId}` : `ID: ${c.id.substring(0, 8)}`})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={filterCustomerId}
+                  onChange={(e) => setFilterCustomerId(e.target.value)}
+                  placeholder="e.g. Providus Customer ID or GUID"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground font-mono"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Action buttons & Active badges */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-border/40">
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 hover:opacity-90 transition-opacity"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Apply FIP Filter</span>
+              </button>
+
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground text-xs font-semibold transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Filters</span>
+                </button>
+              )}
+            </div>
+
+            {/* Active filter badges */}
+            {hasActiveFilters && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-[11px] text-muted-foreground font-medium">Applied:</span>
+                {appliedFilters.maskedPan && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-mono text-[11px] border border-primary/20">
+                    PAN: {appliedFilters.maskedPan}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = { ...appliedFilters };
+                        delete next.maskedPan;
+                        setFilterPan('');
+                        setAppliedFilters(next);
+                      }}
+                      className="hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {appliedFilters.nameOnCard && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-[11px] border border-primary/20">
+                    Name: {appliedFilters.nameOnCard}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = { ...appliedFilters };
+                        delete next.nameOnCard;
+                        setFilterName('');
+                        setAppliedFilters(next);
+                      }}
+                      className="hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {appliedFilters.customerId && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-mono text-[11px] border border-primary/20">
+                    Cust: {appliedFilters.customerId}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = { ...appliedFilters };
+                        delete next.customerId;
+                        setFilterCustomerId('');
+                        setAppliedFilters(next);
+                      }}
+                      className="hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </form>
+      </div>
+
       {/* Main Table */}
       <div className="neo-card overflow-hidden">
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-primary" />
-            <span>Card Inventory List ({cards?.length || 0})</span>
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-primary" />
+              <span>Card Inventory List ({cards?.length || 0})</span>
+            </h2>
+            {hasActiveFilters && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20">
+                Filtered from FIP
+              </span>
+            )}
+          </div>
+          {isFetching && (
+            <span className="text-[11px] text-muted-foreground animate-pulse flex items-center gap-1.5">
+              <RefreshCw className="w-3 h-3 animate-spin text-primary" /> Syncing...
+            </span>
+          )}
         </div>
 
         <div className="overflow-auto max-h-[500px] w-full">
@@ -193,7 +423,20 @@ export const CardsPage: React.FC = () => {
               ) : cards?.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-muted-foreground">
-                    No cards found. Submit your first prepaid card request to start.
+                    {hasActiveFilters ? (
+                      <div className="space-y-2">
+                        <p>No cards found matching the specified Providus FIP filter criteria.</p>
+                        <button
+                          type="button"
+                          onClick={handleResetFilters}
+                          className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 font-semibold text-xs inline-flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Clear filters and show all cards
+                        </button>
+                      </div>
+                    ) : (
+                      'No cards found. Submit your first prepaid card request to start.'
+                    )}
                   </td>
                 </tr>
               ) : (
